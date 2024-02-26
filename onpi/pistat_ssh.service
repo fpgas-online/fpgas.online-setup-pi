@@ -1,0 +1,12 @@
+[Unit]
+Description=pi status ssh ready
+After=ssh.target systemd-user-sessions.target
+PartOf=ssh.service
+
+[Service]
+EnvironmentFile=/etc/environment
+ExecStart=/usr/bin/curl https://${pistat_host}/pistat/stat/%l/ssh/
+Type=oneshot
+
+[Install]
+WantedBy=multi-user.target
