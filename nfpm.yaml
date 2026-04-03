@@ -1,0 +1,106 @@
+name: fpgas-setup-pi
+arch: arm64
+platform: linux
+version: "${VERSION:-0.0.1}"
+maintainer: "fpgas.online <fpgas@fpgas.online>"
+description: "Raspberry Pi environment setup for fpgas.online nodes"
+license: Apache-2.0
+depends:
+  - zsh
+  - tmux
+  - vim
+  - expect
+  - python3
+
+contents:
+  # --- tmux / shell configs (onpi/tmux/) ---
+  - src: onpi/tmux/zshrc
+    dst: /etc/skel/.zshrc
+  - src: onpi/tmux/zprofile
+    dst: /etc/skel/.zprofile
+  - src: onpi/tmux/tmux.conf
+    dst: /etc/skel/.tmux.conf
+
+  # --- pistat services (onpi/) ---
+  - src: onpi/pistat_ssh.service
+    dst: /usr/lib/systemd/system/fpgas-pistat-ssh.service
+  - src: onpi/pistat_cam.service
+    dst: /usr/lib/systemd/system/fpgas-pistat-cam.service
+  - src: onpi/pistat_info.service
+    dst: /usr/lib/systemd/system/fpgas-pistat-info.service
+  - src: onpi/pistat_shutdown.service
+    dst: /usr/lib/systemd/system/fpgas-pistat-shutdown.service
+
+  # --- arty blink service (onpi/arty_blink/) ---
+  - src: onpi/arty_blink/arty_blink.service
+    dst: /usr/lib/systemd/system/fpgas-arty-blink.service
+  - src: onpi/arty_blink/arty_blink.sh
+    dst: /usr/local/bin/fpgas-arty-blink.sh
+    file_info:
+      mode: 0755
+
+  # --- arty detection services (onpi/is_arty/) ---
+  - src: onpi/is_arty/arty_here.service
+    dst: /usr/lib/systemd/system/fpgas-arty-here.service
+  - src: onpi/is_arty/arty_here.exp
+    dst: /usr/local/bin/fpgas-arty-here.exp
+    file_info:
+      mode: 0755
+  - src: onpi/is_arty/arty_here.sh
+    dst: /usr/local/bin/fpgas-arty-here.sh
+    file_info:
+      mode: 0755
+
+  # --- arty wire service (onpi/is_wire/) ---
+  - src: onpi/is_wire/arty_wire.service
+    dst: /usr/lib/systemd/system/fpgas-arty-wire.service
+  - src: onpi/is_wire/arty_wire.sh
+    dst: /usr/local/bin/fpgas-arty-wire.sh
+    file_info:
+      mode: 0755
+
+  # --- fixpi: profile.d scripts ---
+  - src: fixpi/etc/profile.d/show_info.sh
+    dst: /etc/profile.d/fpgas-show-info.sh
+  - src: fixpi/etc/profile.d/showcpu.sh
+    dst: /etc/profile.d/fpgas-showcpu.sh
+  - src: fixpi/etc/profile.d/showkernel.sh
+    dst: /etc/profile.d/fpgas-showkernel.sh
+  - src: fixpi/etc/profile.d/showrelease.sh
+    dst: /etc/profile.d/fpgas-showrelease.sh
+
+  # --- fixpi: etc configs ---
+  - src: fixpi/etc/keyboard
+    dst: /etc/default/keyboard
+  - src: fixpi/etc/issue
+    dst: /etc/issue
+  - src: fixpi/etc/ssh/sshd_config.d/password.conf
+    dst: /etc/ssh/sshd_config.d/fpgas-password.conf
+
+  # --- fixpi: systemd network link files ---
+  - src: fixpi/etc/systemd/network/11-eth-uplink.link
+    dst: /etc/systemd/network/11-eth-uplink.link
+  - src: fixpi/etc/systemd/network/12-eth-fpga.link
+    dst: /etc/systemd/network/12-eth-fpga.link
+
+  # --- pistat scripts ---
+  - src: pistat-scripts/send.py
+    dst: /usr/local/bin/fpgas-pistat-send.py
+    file_info:
+      mode: 0755
+  - src: pistat-scripts/send_ncc.py
+    dst: /usr/local/bin/fpgas-pistat-send-ncc.py
+    file_info:
+      mode: 0755
+  - src: pistat-scripts/send_serial.py
+    dst: /usr/local/bin/fpgas-pistat-send-serial.py
+    file_info:
+      mode: 0755
+  - src: pistat-scripts/send_stat.py
+    dst: /usr/local/bin/fpgas-pistat-send-stat.py
+    file_info:
+      mode: 0755
+  - src: pistat-scripts/ncc.py
+    dst: /usr/local/bin/fpgas-pistat-ncc.py
+    file_info:
+      mode: 0755
