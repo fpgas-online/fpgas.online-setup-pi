@@ -17,11 +17,11 @@ append ... netconsole=@192.156.1.5/eth0,@192.168.1.3/00:08:02:a0:ab:cf
 
 import datetime
 
-from twisted.internet.protocol import DatagramProtocol
-from twisted.internet import reactor
-
 import send
 from send_stat import mk_name
+from twisted.internet import reactor
+from twisted.internet.protocol import DatagramProtocol
+
 
 def log(text, address=None):
     """ make noise, dispaly the text, append to log file """

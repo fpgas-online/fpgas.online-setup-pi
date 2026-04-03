@@ -5,9 +5,9 @@ import argparse
 import os
 import sys
 
+from asgiref.sync import async_to_sync
 from channels.layers import get_channel_layer
 
-from asgiref.sync import async_to_sync
 
 def init(site_path, django_settings_module):
     sys.path.insert(0, site_path)
@@ -58,7 +58,10 @@ def main():
     init(args.site_path, args.django_settings)
     send_message(args.group, args.type, args.message)
     if args.debug:
-      print("import sys; sys.exit()"); import code; code.interact(local=locals())
+      import code
+
+      print("import sys; sys.exit()")
+      code.interact(local=locals())
 
 
 if __name__=='__main__':

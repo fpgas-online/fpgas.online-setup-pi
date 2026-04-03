@@ -1,11 +1,10 @@
 
 import argparse
-import json
-import serial
 import sys
-import time
 
 import send
+import serial
+
 
 class Serial:
 

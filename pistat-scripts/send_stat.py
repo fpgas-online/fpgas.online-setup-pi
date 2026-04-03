@@ -39,7 +39,6 @@ The "tftp" action is invoked when a TFTP file transfer completes: the arguments 
 
 import argparse
 import collections
-
 import os
 
 import send
@@ -131,7 +130,7 @@ def main():
     args = get_args()
 
     if DEBUG:
-        with open('/tmp/foo','a') as f:
+        with open('/tmp/foo','a'):
             # f.write(args.__repr__())
             # f.write(f' {dsh=}\n')
             pass
