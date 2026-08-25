@@ -1,7 +1,7 @@
 name: fpgas-online-setup-pi
 arch: all
 platform: linux
-version: "${VERSION:-0.0.1}"
+version: "${VERSION}"
 maintainer: "fpgas.online <fpgas@fpgas.online>"
 description: "Raspberry Pi environment setup for fpgas.online nodes"
 license: Apache-2.0
@@ -73,7 +73,7 @@ contents:
   - src: fixpi/etc/keyboard
     dst: /etc/default/keyboard
   - src: fixpi/etc/issue
-    dst: /etc/issue
+    dst: /etc/issue.d/10-fpgas.issue
   - src: fixpi/etc/ssh/sshd_config.d/password.conf
     dst: /etc/ssh/sshd_config.d/fpgas-password.conf
 
