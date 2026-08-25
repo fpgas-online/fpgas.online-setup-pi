@@ -1,5 +1,5 @@
-name: fpgas-setup-pi
-arch: arm64
+name: fpgas-online-setup-pi
+arch: all
 platform: linux
 version: "${VERSION:-0.0.1}"
 maintainer: "fpgas.online <fpgas@fpgas.online>"
