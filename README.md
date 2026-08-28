@@ -30,6 +30,7 @@ Deployment is managed by the `onpi` Ansible role in [fpgas.online-infra](https:/
 - **SSH configuration** -- authorized keys and SSH daemon settings for remote management.
 - **Profile scripts** -- `/etc/profile.d/` scripts for environment setup on login.
 - **Keyboard configuration** -- console keyboard layout settings.
+- **FEL boot host** -- udev-triggered `fpgas-felboot@.service` loads U-Boot (vendored in `felboot/u-boot/`) into Allwinner boards that enumerate in FEL mode on this Pi's USB, so PoE-cycled Orange Pi H3 boards netboot without an operator.
 
 ## Directory Structure
 
@@ -37,6 +38,7 @@ Deployment is managed by the `onpi` Ansible role in [fpgas.online-infra](https:/
 onpi/           Tmux configs, pistat systemd services, arty detection services
 fixpi/          profile.d scripts, SSH config, keyboard settings, network .link files
 pistat-scripts/ Python status reporter scripts
+felboot/        FEL-boot script, udev rule, systemd template unit, vendored U-Boot image
 nfpm.yaml       Package definition for building the .deb
 ruff.toml       Python linter configuration
 ```
