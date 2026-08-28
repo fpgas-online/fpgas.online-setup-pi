@@ -16,15 +16,20 @@ exit 0
 STUB
 chmod +x "$scratch/bin/sunxi-fel"
 export FELBOOT_TEST_LOG="$scratch/log" PATH="$scratch/bin:$PATH" FPGAS_FELBOOT_IMAGE="$scratch/uboot.bin" FPGAS_FELBOOT_RETRY_SLEEP=0
+export FPGAS_FELBOOT_MARKERS="$scratch/markers"
 : > "$scratch/uboot.bin"
 
 # 1. bus/dev from a kernel device name like 1-1.2.2 -> sunxi-fel --dev 001:012
 printf '12\n' > "$scratch/devnum"; printf '1\n' > "$scratch/busnum"
 FPGAS_FELBOOT_SYSFS="$scratch" "$here/fpgas-felboot.sh" 1-1.2.2
 grep -qx -- "--dev 001:012 uboot $scratch/uboot.bin" "$scratch/log" || { echo "FAIL: argv was: $(cat "$scratch/log")"; exit 1; }
+grep -q -- " 001:012 attempt=1" "$scratch/markers/1-1.2.2" || { echo "FAIL: no success marker: $(ls "$scratch/markers" 2>&1)"; exit 1; }
 
 # 2. retries three times then fails
 : > "$scratch/log"
 if FELBOOT_TEST_FAIL=1 FPGAS_FELBOOT_SYSFS="$scratch" "$here/fpgas-felboot.sh" 1-1.2.2; then echo "FAIL: expected non-zero exit"; exit 1; fi
 [ "$(wc -l < "$scratch/log")" = 3 ] || { echo "FAIL: expected 3 attempts, got $(wc -l < "$scratch/log")"; exit 1; }
+rm -f "$scratch/markers/1-1.2.2"
+if FELBOOT_TEST_FAIL=1 FPGAS_FELBOOT_SYSFS="$scratch" "$here/fpgas-felboot.sh" 1-1.2.2; then :; fi
+[ ! -e "$scratch/markers/1-1.2.2" ] || { echo "FAIL: marker written on failure"; exit 1; }
 echo "PASS"

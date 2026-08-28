@@ -9,6 +9,9 @@ dev="${1:?usage: fpgas-felboot.sh <usb kernel device, e.g. 1-1.2.2>}"
 image="${FPGAS_FELBOOT_IMAGE:-/usr/lib/fpgas-online/u-boot/orangepi_pc_plus/u-boot-sunxi-with-spl.bin}"
 sysfs="${FPGAS_FELBOOT_SYSFS:-/sys/bus/usb/devices/$dev}"
 retry_sleep="${FPGAS_FELBOOT_RETRY_SLEEP:-2}"
+# Success marker per board (tmpfs, gone on reboot): the journal on a netbooted
+# Pi is volatile and rotates fast, so this is what verify-pi checks.
+markers="${FPGAS_FELBOOT_MARKERS:-/run/fpgas-felboot}"
 
 busnum=$(<"$sysfs/busnum")
 devnum=$(<"$sysfs/devnum")
@@ -17,6 +20,8 @@ target=$(printf '%03d:%03d' "$busnum" "$devnum")
 for attempt in 1 2 3; do
     if sunxi-fel --dev "$target" uboot "$image"; then
         echo "fpgas-felboot: $dev ($target): U-Boot loaded (attempt $attempt)"
+        mkdir -p "$markers"
+        printf '%s %s attempt=%s\n' "$(date -u +%FT%TZ)" "$target" "$attempt" > "$markers/$dev"
         exit 0
     fi
     echo "fpgas-felboot: $dev ($target): sunxi-fel failed (attempt $attempt)" >&2
