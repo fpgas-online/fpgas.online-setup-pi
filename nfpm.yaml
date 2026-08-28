@@ -6,6 +6,7 @@ maintainer: "fpgas.online <fpgas@fpgas.online>"
 description: "Raspberry Pi environment setup for fpgas.online nodes"
 license: Apache-2.0
 depends:
+  - sunxi-tools   # felboot: sunxi-fel
   - zsh
   - tmux
   - vim
@@ -104,3 +105,21 @@ contents:
     dst: /usr/local/bin/fpgas-pistat-ncc.py
     file_info:
       mode: 0755
+
+  # --- felboot: FEL-boot Allwinner (Orange Pi H3) boards that hang off this Pi's USB ---
+  - src: felboot/fpgas-felboot.sh
+    dst: /usr/local/bin/fpgas-felboot.sh
+    file_info:
+      mode: 0755
+  - src: felboot/fpgas-felboot@.service
+    dst: /usr/lib/systemd/system/fpgas-felboot@.service
+    file_info:
+      mode: 0644
+  - src: felboot/60-fpgas-felboot.rules
+    dst: /usr/lib/udev/rules.d/60-fpgas-felboot.rules
+    file_info:
+      mode: 0644
+  - src: felboot/u-boot/orangepi_pc_plus/u-boot-sunxi-with-spl.bin
+    dst: /usr/lib/fpgas-online/u-boot/orangepi_pc_plus/u-boot-sunxi-with-spl.bin
+    file_info:
+      mode: 0644

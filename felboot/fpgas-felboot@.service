@@ -1,0 +1,11 @@
+[Unit]
+Description=FEL-boot U-Boot into Allwinner board %I
+# One shot per enumeration; udev's SYSTEMD_WANTS starts it again when the
+# board re-enumerates in FEL mode (e.g. after a PoE cycle).
+StopWhenUnneeded=yes
+
+[Service]
+Type=oneshot
+# %i (escaped), not %I: systemd unescapes %I and turns the USB name 1-1.2.2 into
+# 1/1.2.2 (found on hardware 2026-08-28).
+ExecStart=/usr/local/bin/fpgas-felboot.sh %i

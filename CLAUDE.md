@@ -22,6 +22,7 @@ deb package on each Pi via `apt install fpgas-online-setup-pi`.
 - **Pi status reporting**: pistat systemd services + Python sender scripts (in `onpi/` and `pistat-scripts/`)
 - **Network interface naming**: USB-path-based .link files for eth-uplink and eth-fpga (in `fixpi/etc/systemd/network/`)
 - **System config**: SSH password config, US keyboard, console banner, profile.d scripts (in `fixpi/`)
+- **FEL boot host**: `fpgas-felboot@.service` + udev rule + vendored U-Boot that boot Allwinner (Orange Pi H3) boards found in USB FEL mode (in `felboot/`; test with `bash felboot/test_felboot.sh`)
 
 ### Directory Structure
 
