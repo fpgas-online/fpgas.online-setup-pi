@@ -30,6 +30,7 @@ Deployment is managed by the `onpi` Ansible role in [fpgas.online-infra](https:/
 - **SSH configuration** -- authorized keys and SSH daemon settings for remote management.
 - **Profile scripts** -- `/etc/profile.d/` scripts for environment setup on login.
 - **Keyboard configuration** -- console keyboard layout settings.
+- **USB gadget console** -- on OTG-capable boards (Orange Pi H3, Pi 4/5 with `dtoverlay=dwc2,dr_mode=peripheral`) udev loads `g_serial` when a USB device controller appears and the host at the OTG port gets two CDC-ACM ports: the kernel log (replayed from boot by `fpgas-usb-console.service`) and a login getty. Booting never waits for a host (in `usb-console/`).
 - **FEL boot host** -- udev-triggered `fpgas-felboot@.service` loads U-Boot (vendored in `felboot/u-boot/`) into Allwinner boards that enumerate in FEL mode on this Pi's USB, so PoE-cycled Orange Pi H3 boards netboot without an operator.
 
 ## Directory Structure
@@ -39,6 +40,7 @@ onpi/           Tmux configs, pistat systemd services, arty detection services
 fixpi/          profile.d scripts, SSH config, keyboard settings, network .link files
 pistat-scripts/ Python status reporter scripts
 felboot/        FEL-boot script, udev rule, systemd template unit, vendored U-Boot image
+usb-console/    USB gadget serial console: udev rules, modprobe options, kernel-log service
 nfpm.yaml       Package definition for building the .deb
 ruff.toml       Python linter configuration
 ```
