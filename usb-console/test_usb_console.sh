@@ -10,7 +10,8 @@ modprobe="$here/fpgas-usb-console.conf"
 fail() { echo "FAIL: $*"; exit 1; }
 
 # 1. every file is packaged
-for f in 70-fpgas-usb-console.rules fpgas-usb-console.service fpgas-usb-console.conf; do
+for f in 70-fpgas-usb-console.rules fpgas-usb-console.service fpgas-usb-console.conf \
+         71-fpgas-usb-console-host.rules fpgas-usb-console-log@.service fpgas-usb-console-log.py; do
     grep -q "src: usb-console/$f" "$repo/nfpm.yaml" || fail "$f not in nfpm.yaml"
 done
 
@@ -18,8 +19,10 @@ done
 grep -q 'SUBSYSTEM=="udc".*kmod load g_serial' "$rules" || fail "no udc -> g_serial rule"
 grep -q 'KERNEL=="ttyGS0".*SYSTEMD_WANTS.*fpgas-usb-console.service' "$rules" || fail "no ttyGS0 -> service rule"
 grep -q 'KERNEL=="ttyGS1".*SYSTEMD_WANTS.*serial-getty@ttyGS1.service' "$rules" || fail "no ttyGS1 -> getty rule"
+hostrules="$here/71-fpgas-usb-console-host.rules"
+grep -q 'KERNEL=="ttyACM\*".*ID_USB_INTERFACE_NUM}=="00".*fpgas-usb-console-log@%k.service' "$hostrules" || fail "no host capture rule"
 if udevadm verify --help >/dev/null 2>&1; then
-    udevadm verify --no-style "$rules" || fail "udevadm verify rejected the rules"
+    udevadm verify --no-style "$rules" "$hostrules" || fail "udevadm verify rejected the rules"
 fi
 
 # 3. two gadget ports, or the getty and the log would share (and flush) one tty
@@ -34,4 +37,12 @@ grep -Eq '^ExecStart=/usr/bin/dmesg .*--follow' "$unit" || fail "ExecStart is no
 if command -v systemd-analyze >/dev/null; then
     systemd-analyze verify "$unit" || fail "systemd-analyze verify rejected the unit"
 fi
+hostunit="$here/fpgas-usb-console-log@.service"
+grep -q '^BindsTo=dev-%i.device' "$hostunit" || fail "host unit not bound to its tty"
+grep -q '^ExecStart=/usr/local/bin/fpgas-usb-console-log.py %i' "$hostunit" || fail "host unit ExecStart"
+# verify insists ExecStart exists, so only on a host with the package installed
+if command -v systemd-analyze >/dev/null && [ -x /usr/local/bin/fpgas-usb-console-log.py ]; then
+    systemd-analyze verify "$hostunit" || fail "systemd-analyze verify rejected the host unit"
+fi
+uv run --no-project "$here/test_usb_console_log.py" || fail "logger test"
 echo "PASS"
