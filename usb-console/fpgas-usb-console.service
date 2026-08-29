@@ -1,0 +1,26 @@
+[Unit]
+Description=Kernel log on the USB gadget serial port (ttyGS0)
+# Pulled in by udev (70-fpgas-usb-console.rules) when ttyGS0 appears, gone
+# with it. The kernels we boot lack CONFIG_U_SERIAL_CONSOLE, so console=ttyGS0
+# would be inert -- this service is the console instead.
+BindsTo=dev-ttyGS0.device
+After=dev-ttyGS0.device
+# Restarts are the normal path (one per host detach), not a failure loop.
+StartLimitIntervalSec=0
+
+[Service]
+# dmesg prints the whole ring buffer (log_buf_len=1M on the netboot cmdline)
+# and then follows /dev/kmsg, so a host that attaches mid-boot still gets the
+# log from the start. With no host attached the gadget buffers 8 KiB and then
+# blocks this writer only; when a host attaches the buffer drains and the
+# stream continues; when it detaches the port hangs up, dmesg exits and the
+# restart replays the full log for the next host.
+ExecStart=/usr/bin/dmesg --follow --color=never
+StandardInput=null
+StandardOutput=tty
+StandardError=journal
+TTYPath=/dev/ttyGS0
+TTYReset=no
+TTYVHangup=no
+Restart=always
+RestartSec=1
