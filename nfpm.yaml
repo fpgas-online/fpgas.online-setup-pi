@@ -137,3 +137,16 @@ contents:
     dst: /usr/lib/modprobe.d/fpgas-usb-console.conf
     file_info:
       mode: 0644
+  # host side: capture each attached board's log port to /var/log/fpgas-usb-console/
+  - src: usb-console/71-fpgas-usb-console-host.rules
+    dst: /usr/lib/udev/rules.d/71-fpgas-usb-console-host.rules
+    file_info:
+      mode: 0644
+  - src: usb-console/fpgas-usb-console-log@.service
+    dst: /usr/lib/systemd/system/fpgas-usb-console-log@.service
+    file_info:
+      mode: 0644
+  - src: usb-console/fpgas-usb-console-log.py
+    dst: /usr/local/bin/fpgas-usb-console-log.py
+    file_info:
+      mode: 0755
