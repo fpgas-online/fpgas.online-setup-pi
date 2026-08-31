@@ -1,0 +1,16 @@
+# USB gadget serial console on OTG-capable boards (Orange Pi H3 musb, Pi 4/5
+# dwc2 with dtoverlay=dwc2,dr_mode=peripheral). Shipped by fpgas-online-setup-pi.
+#
+# Nothing here waits for a USB host: the gadget enumerates only when a host is
+# plugged into the OTG port, and boot proceeds identically either way. Boards
+# without a USB device controller (Pi 3, the CI VM) never match rule 1, so the
+# gadget stack is not even loaded there.
+#
+# 1. A USB device controller appeared -> load g_serial (two CDC-ACM ports, see
+#    /usr/lib/modprobe.d/fpgas-usb-console.conf).
+ACTION=="add", SUBSYSTEM=="udc", RUN{builtin}+="kmod load g_serial"
+# 2. ttyGS0 = kernel log stream (fpgas-usb-console.service replays dmesg and
+#    follows /dev/kmsg); ttyGS1 = login getty. Separate ports because agetty
+#    flushes its tty on start, which would drop queued log data.
+ACTION=="add", SUBSYSTEM=="tty", KERNEL=="ttyGS0", TAG+="systemd", ENV{SYSTEMD_WANTS}+="fpgas-usb-console.service"
+ACTION=="add", SUBSYSTEM=="tty", KERNEL=="ttyGS1", TAG+="systemd", ENV{SYSTEMD_WANTS}+="serial-getty@ttyGS1.service"

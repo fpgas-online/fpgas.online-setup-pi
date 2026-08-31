@@ -1,0 +1,7 @@
+# Host side of the USB gadget console: an fpgas.online board's gadget
+# (g_serial, iManufacturer=fpgas.online iProduct=usb-console) enumerated on
+# this Pi's USB. Its first CDC-ACM port (interface 00) carries the board's
+# kernel log -> capture it from the first byte (fpgas-usb-console-log.py);
+# the second port (interface 02) is the board's login getty, left alone.
+# Shipped by fpgas-online-setup-pi, so any Pi that boards hang off is a logger.
+ACTION=="add", SUBSYSTEM=="tty", KERNEL=="ttyACM*", ENV{ID_VENDOR}=="fpgas.online", ENV{ID_MODEL}=="usb-console", ENV{ID_USB_INTERFACE_NUM}=="00", TAG+="systemd", ENV{SYSTEMD_WANTS}+="fpgas-usb-console-log@%k.service"

@@ -1,0 +1,11 @@
+[Unit]
+Description=Capture the kernel log of the fpgas.online board on %I
+# Started by udev (71-fpgas-usb-console-host.rules) when a board's gadget
+# enumerates; gone with the device.
+BindsTo=dev-%i.device
+After=dev-%i.device
+
+[Service]
+ExecStart=/usr/local/bin/fpgas-usb-console-log.py %i
+Restart=on-failure
+RestartSec=2
