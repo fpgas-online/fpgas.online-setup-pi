@@ -1,0 +1,12 @@
+[Unit]
+Description=fpgas.online fleet boot-stage event: %i
+ConditionPathExists=/etc/fpgas-online/fleet.toml
+After=network-online.target fpgas-fleet-agent.service
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/python3 /usr/local/lib/fpgas-online/fleet/fleet_event.py %i
+
+[Install]
+WantedBy=multi-user.target
