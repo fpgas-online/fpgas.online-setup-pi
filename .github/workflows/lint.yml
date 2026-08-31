@@ -11,6 +11,13 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: astral-sh/ruff-action@v3
+  pytest:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+      - name: Run tests
+        run: uv run --with pytest pytest tests/ -v
   shellcheck:
     runs-on: ubuntu-latest
     steps:
