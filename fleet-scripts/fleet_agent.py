@@ -124,11 +124,10 @@ def main():
     args = parser.parse_args()
     cfg = load_config(args.config)
 
-    with open("/etc/hostname") as f:
-        hostname = f.read().strip()
-
     def collect_fn():
-        return collect.document(site=cfg["site"], hostname=hostname)
+        # hostname="" -> collect falls back to /etc/hostname, then the
+        # kernel hostname (the netboot fleet's /etc/hostname is empty)
+        return collect.document(site=cfg["site"])
 
     client = mqtt.Client(mqtt.CallbackAPIVersion.VERSION2)
     run(cfg, client, collect_fn)

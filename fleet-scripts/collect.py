@@ -15,6 +15,7 @@ import glob
 import json
 import os
 import re
+import socket
 import subprocess
 import urllib.request
 
@@ -23,6 +24,11 @@ SCHEMA = 1
 USB_SKIP_VENDORS = {"1d6b", "0424", "2109"}
 PCI_BRIDGE_CLASS = "0604"
 PCI_SKIP_VENDORS = {"1de4"}  # RP1 south bridge: present on every Pi 5
+# onboard, not connected hardware: the Pi 4's VL805 USB controller
+PCI_SKIP_DEVICES = {("1106", "3483")}
+# SQRL Acorn CLE-215+ under its default gateware (live probe 2026-09-01:
+# every stock Acorn at welland enumerates as 1e24:021f)
+ACORN_PCI_VENDOR = "1e24"
 
 
 def _read(root, rel):
@@ -103,9 +109,15 @@ def connection_section(root, site, hostname):
         except (OSError, ValueError):
             pass
         addresses = {k: sorted(v) for k, v in addresses.items()}
+    # the netboot fleet's /etc/hostname is empty (names come from DHCP), so
+    # a live collect falls through to the kernel hostname
+    if not hostname:
+        hostname = _read(root, "etc/hostname")
+    if not hostname and _is_live(root):
+        hostname = socket.gethostname()
     return {
         "site": site,
-        "hostname": hostname or _read(root, "etc/hostname"),
+        "hostname": hostname,
         "addresses": addresses,
         "ssh_host_keys": host_keys,
         "login_user": "pi",
@@ -131,23 +143,21 @@ def peripherals_section(root):
     for dev in sorted(glob.glob(os.path.join(root, "sys/bus/pci/devices/*"))):
         rel = os.path.relpath(dev, root)
         vendor = _read(root, os.path.join(rel, "vendor")).removeprefix("0x")
+        device = _read(root, os.path.join(rel, "device")).removeprefix("0x")
         pci_class = _read(root, os.path.join(rel, "class")).removeprefix("0x")
         if not vendor or vendor in PCI_SKIP_VENDORS \
+                or (vendor, device) in PCI_SKIP_DEVICES \
                 or pci_class.startswith(PCI_BRIDGE_CLASS):
             continue
-        pcie.append({
-            "vendor": vendor,
-            "device": _read(root, os.path.join(rel, "device")).removeprefix("0x"),
-            "class": pci_class,
-        })
+        pcie.append({"vendor": vendor, "device": device, "class": pci_class})
     hats = []
     if _read(root, "proc/device-tree/hat/product"):
         hats.append({key: _read(root, f"proc/device-tree/hat/{key}")
                      for key in ("product", "vendor", "product_id",
                                  "product_ver", "uuid")})
-    cameras = sorted(
+    cameras = sorted({
         _read(root, os.path.relpath(p, root))
-        for p in glob.glob(os.path.join(root, "sys/class/video4linux/*/name")))
+        for p in glob.glob(os.path.join(root, "sys/class/video4linux/*/name"))})
     return {
         "usb": sorted(usb, key=lambda e: sorted(e.items())),
         "pcie": sorted(pcie, key=lambda e: sorted(e.items())),
@@ -164,7 +174,7 @@ def fpga_section(peripherals, tt_health):
             boards.append({"kind": "arty-a7",
                            "ids": {"digilent_serial": dev["serial"]}})
     for dev in peripherals["pcie"]:
-        if dev["vendor"] == "1cf0":
+        if dev["vendor"] == ACORN_PCI_VENDOR:
             boards.append({"kind": "acorn-cle-215+",
                            "ids": {"pci": f"{dev['vendor']}:{dev['device']}"}})
         elif dev["vendor"] == "10ee":
