@@ -1,0 +1,13 @@
+[Unit]
+Description=fpgas.online fleet agent (registration + status + LWT)
+Wants=network-online.target
+After=network-online.target fpgas-tt.service
+ConditionPathExists=/etc/fpgas-online/fleet.toml
+
+[Service]
+ExecStart=/usr/bin/python3 /usr/local/lib/fpgas-online/fleet/fleet_agent.py
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target
