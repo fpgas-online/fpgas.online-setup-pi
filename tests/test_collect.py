@@ -28,8 +28,9 @@ def test_peripherals_and_fpga():
     assert {"vid": "0403", "pid": "6010",
             "product": "FT2232C/D/H Dual UART/FIFO IC",
             "serial": "210319B3E5C5"} in p["usb"]
-    # duplicates deduped (live Pis expose ov5647 on two video nodes)
-    assert p["cameras"].count("ov5647") == 1
+    # only the camera hardware, not the ISP/codec/CSI plumbing that fills
+    # /sys/class/video4linux (a Pi 5 exposes ~28 nodes for one sensor)
+    assert p["cameras"] == ["ov5647"]
     # bridges, RP1 and the Pi 4's onboard VL805 are all skipped: only the
     # Acorn's SQRL endpoint remains (real ids, live probe 2026-09-01)
     assert p["pcie"] == [{"vendor": "1e24", "device": "021f",
@@ -69,3 +70,27 @@ def test_document_carries_all_sections():
     assert doc["schema"] == 1
     assert set(doc) == {"schema", "machine", "software", "connection",
                         "peripherals", "fpga"}
+
+
+def test_only_i2c_sensors_count_as_cameras(tmp_path):
+    """v4l2 names an I2C-attached sensor '<driver> <bus>-<addr>'; every other
+    v4l node is ISP, codec or CSI front-end plumbing and is not a camera."""
+    v4l = tmp_path / "sys/class/video4linux"
+    for node, name in {
+        "v4l-subdev0": "imx477 4-001a",     # a different sensor model
+        "v4l-subdev1": "ov5647 10-0036",
+        "video0": "unicam-image",
+        "video1": "bcm2835-isp-capture0",
+        "video2": "cedrus",                 # Allwinner video engine, not a cam
+        "video3": "rpi-hevc-dec",
+    }.items():
+        (v4l / node).mkdir(parents=True)
+        (v4l / node / "name").write_text(name + "\n")
+    assert collect.peripherals_section(tmp_path)["cameras"] == ["imx477", "ov5647"]
+
+
+def test_board_with_no_camera_reports_none(tmp_path):
+    v4l = tmp_path / "sys/class/video4linux"
+    (v4l / "video0").mkdir(parents=True)
+    (v4l / "video0" / "name").write_text("cedrus\n")
+    assert collect.peripherals_section(tmp_path)["cameras"] == []

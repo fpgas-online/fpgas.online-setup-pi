@@ -29,6 +29,14 @@ PCI_SKIP_DEVICES = {("1106", "3483")}
 # SQRL Acorn CLE-215+ under its default gateware (live probe 2026-09-01:
 # every stock Acorn at welland enumerates as 1e24:021f)
 ACORN_PCI_VENDOR = "1e24"
+# A camera sensor is an I2C subdev, which v4l2 names "<driver> <bus>-<addr>"
+# (e.g. "ov5647 10-0036"). Everything else under /sys/class/video4linux is
+# ISP, codec or CSI front-end plumbing -- a Pi 5 exposes ~28 such nodes for
+# a single camera. Verified in sysfs on pi-sw2-p47: only the sensor's device
+# link resolves into an i2c bus, the rest hang off platform blocks. Matching
+# the naming convention rather than a list of model names keeps imx219,
+# imx477, ov9281 and friends working.
+SENSOR_NAME = re.compile(r"^([a-z][a-z0-9_]*) \d+-[0-9a-f]{4}$")
 
 
 def _read(root, rel):
@@ -155,14 +163,16 @@ def peripherals_section(root):
         hats.append({key: _read(root, f"proc/device-tree/hat/{key}")
                      for key in ("product", "vendor", "product_id",
                                  "product_ver", "uuid")})
-    cameras = sorted({
-        _read(root, os.path.relpath(p, root))
-        for p in glob.glob(os.path.join(root, "sys/class/video4linux/*/name"))})
+    cameras = set()
+    for node in glob.glob(os.path.join(root, "sys/class/video4linux/*/name")):
+        match = SENSOR_NAME.match(_read(root, os.path.relpath(node, root)))
+        if match:
+            cameras.add(match.group(1))
     return {
         "usb": sorted(usb, key=lambda e: sorted(e.items())),
         "pcie": sorted(pcie, key=lambda e: sorted(e.items())),
         "hats": hats,
-        "cameras": cameras,
+        "cameras": sorted(cameras),
     }
 
 
