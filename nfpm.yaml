@@ -12,8 +12,40 @@ depends:
   - vim
   - expect
   - python3
+  - python3-paho-mqtt   # fleet agent / fleet-event MQTT publishing
 
 contents:
+  # --- fleet self-registration (fleet-scripts/ + onpi/fleet/) ---
+  - src: fleet-scripts/collect.py
+    dst: /usr/local/lib/fpgas-online/fleet/collect.py
+    file_info:
+      mode: 0755
+  - src: fleet-scripts/fleet_agent.py
+    dst: /usr/local/lib/fpgas-online/fleet/fleet_agent.py
+    file_info:
+      mode: 0755
+  - src: fleet-scripts/fleet_event.py
+    dst: /usr/local/lib/fpgas-online/fleet/fleet_event.py
+    file_info:
+      mode: 0755
+  - src: /usr/local/lib/fpgas-online/fleet/fleet_event.py
+    dst: /usr/local/bin/fleet-event
+    type: symlink
+  - src: onpi/fleet/fleet-agent.service
+    dst: /usr/lib/systemd/system/fpgas-fleet-agent.service
+  - src: onpi/fleet/fleet-event@.service
+    dst: /usr/lib/systemd/system/fpgas-fleet-event@.service
+  - src: onpi/fleet/stage-dropins/network-online.conf
+    dst: /usr/lib/systemd/system/fpgas-fleet-event@network-online.service.d/stage.conf
+  - src: onpi/fleet/stage-dropins/time-synced.conf
+    dst: /usr/lib/systemd/system/fpgas-fleet-event@time-synced.service.d/stage.conf
+  - src: onpi/fleet/stage-dropins/ssh-up.conf
+    dst: /usr/lib/systemd/system/fpgas-fleet-event@ssh-up.service.d/stage.conf
+  - src: onpi/fleet/stage-dropins/cam-streaming.conf
+    dst: /usr/lib/systemd/system/fpgas-fleet-event@cam-streaming.service.d/stage.conf
+  - src: onpi/fleet/stage-dropins/tt-daemon-up.conf
+    dst: /usr/lib/systemd/system/fpgas-fleet-event@tt-daemon-up.service.d/stage.conf
+
   # --- tmux / shell configs (onpi/tmux/) ---
   - src: onpi/tmux/zshrc
     dst: /etc/skel/.zshrc

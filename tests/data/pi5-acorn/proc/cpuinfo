@@ -1,0 +1,12 @@
+processor	: 0
+BogoMIPS	: 108.00
+Features	: fp asimd evtstrm aes pmull sha1 sha2 crc32
+CPU implementer	: 0x41
+CPU architecture: 8
+CPU variant	: 0x4
+CPU part	: 0xd0b
+CPU revision	: 1
+
+Revision	: a04171
+Serial		: c36b093f773d46b8
+Model		: Raspberry Pi 5 Model B Rev 1.1
