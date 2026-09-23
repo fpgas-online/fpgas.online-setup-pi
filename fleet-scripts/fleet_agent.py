@@ -55,6 +55,17 @@ def _now_iso():
     return datetime.datetime.now(datetime.timezone.utc).isoformat()
 
 
+def mqtt_client(mqtt):
+    """A paho-mqtt client on bookworm's 1.6.1 and on trixie's 2.x alike.
+
+    paho 2.0 added CallbackAPIVersion and wants it passed explicitly; 1.6.1
+    has no such attribute, so naming it unconditionally crashed the agent on
+    every bookworm Pi. Nothing here registers a callback, so the two APIs
+    behave the same for this code."""
+    api = getattr(mqtt, "CallbackAPIVersion", None)
+    return mqtt.Client(api.VERSION2) if api else mqtt.Client()
+
+
 def status_payload(boot_id, uptime_s, fingerprint):
     return {"online": True, "boot_id": boot_id, "uptime_s": uptime_s,
             "fingerprint": fingerprint, "ts": _now_iso()}
@@ -129,7 +140,7 @@ def main():
         # kernel hostname (the netboot fleet's /etc/hostname is empty)
         return collect.document(site=cfg["site"])
 
-    client = mqtt.Client(mqtt.CallbackAPIVersion.VERSION2)
+    client = mqtt_client(mqtt)
     run(cfg, client, collect_fn)
 
 

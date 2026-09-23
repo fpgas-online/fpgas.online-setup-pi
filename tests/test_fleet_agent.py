@@ -98,3 +98,24 @@ def test_fleet_event_builds_topic_and_payload():
     assert payload == {"stage": "ssh-up", "boot_id": "b1",
                        "ts": "2026-09-01T00:00:00+00:00",
                        "detail": {"port": "22"}}
+
+
+class _Paho1:
+    """paho-mqtt 1.6.1 (bookworm): no CallbackAPIVersion."""
+    class Client:
+        def __init__(self, *args):
+            self.args = args
+
+
+class _Paho2(_Paho1):
+    """paho-mqtt 2.x (trixie): the callback API must be chosen."""
+    class CallbackAPIVersion:
+        VERSION2 = "v2"
+
+
+def test_mqtt_client_on_paho_1_passes_no_callback_api():
+    assert fleet_agent.mqtt_client(_Paho1).args == ()
+
+
+def test_mqtt_client_on_paho_2_picks_callback_api_version2():
+    assert fleet_agent.mqtt_client(_Paho2).args == ("v2",)

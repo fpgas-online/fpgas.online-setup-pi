@@ -38,7 +38,7 @@ def main():
     topic, payload = build(args.stage, args.detail, cfg["site"], serial,
                            fleet_agent.boot_id(), fleet_agent._now_iso())
 
-    client = mqtt.Client(mqtt.CallbackAPIVersion.VERSION2)
+    client = fleet_agent.mqtt_client(mqtt)
     client.connect(cfg["broker"], cfg["port"])
     client.loop_start()
     client.publish(topic, json.dumps(payload), qos=1).wait_for_publish(timeout=10)
