@@ -18,6 +18,24 @@ jobs:
       - uses: astral-sh/setup-uv@v5
       - name: Run tests
         run: uv run --with pytest pytest tests/ -v
+  fleet-mqtt:
+    # The fleet scripts against a real broker and each paho-mqtt the Pi roots
+    # ship: bookworm 1.6.1 has no CallbackAPIVersion, trixie has 2.x.
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        paho: ["1.6.1", "2.1.0"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+      - name: Install mosquitto
+        run: sudo apt-get install -y mosquitto
+      - name: Run the fleet MQTT tests on paho-mqtt ${{ matrix.paho }}
+        env:
+          FLEET_MQTT_REQUIRED: "1"
+        run: >-
+          uv run --with pytest --with paho-mqtt==${{ matrix.paho }}
+          pytest tests/test_fleet_mqtt.py tests/test_fleet_agent.py -v
   shellcheck:
     runs-on: ubuntu-latest
     steps:
