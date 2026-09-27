@@ -85,7 +85,7 @@ def software_section(root):
                 capture_output=True, text=True, timeout=10).stdout
             packages = dict(line.split(" ", 1)
                             for line in out.splitlines() if " " in line)
-        except OSError:
+        except (OSError, subprocess.SubprocessError):  # incl. a timeout
             pass
     return {
         "kernel": _read(root, "proc/sys/kernel/osrelease"),
@@ -114,7 +114,7 @@ def connection_section(root, site, hostname):
                         continue
                     kind = "ipv6" if a["family"] == "inet6" else "ipv4"
                     addresses[kind].append(a["local"])
-        except (OSError, ValueError):
+        except (OSError, ValueError, subprocess.SubprocessError):
             pass
         addresses = {k: sorted(v) for k, v in addresses.items()}
     # the netboot fleet's /etc/hostname is empty (names come from DHCP), so
