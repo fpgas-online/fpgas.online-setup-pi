@@ -15,9 +15,10 @@ ConditionPathExists=/etc/fpgas-online/fleet.toml
 # Ready once the broker has acknowledged its registration and first status
 # (fleet_agent.py): fpgas-verify, After= this unit, publishes fpga-verifying,
 # which the site drops for a machine that has not registered. The agent says
-# ready after READY_WAIT_SECONDS even if the broker has not answered; a
-# broker it cannot reach at all times the start out and holds the check up
-# by this long at most.
+# ready after READY_WAIT_SECONDS even if the broker has not answered. A broker
+# it cannot reach fails the start within seconds (paho's 5 s connect timeout;
+# Restart= tries again), and TimeoutStartSec bounds a slow collect plus the
+# wait: either way the check, which is only ordered after this unit, goes on.
 Type=notify
 TimeoutStartSec=90
 ExecStart=/usr/bin/python3 /usr/local/lib/fpgas-online/fleet/fleet_agent.py

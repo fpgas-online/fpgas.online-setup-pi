@@ -195,3 +195,20 @@ def test_sd_notify_sends_to_the_socket(tmp_path, monkeypatch):
     monkeypatch.delenv("NOTIFY_SOCKET")
     fleet_agent.sd_notify("READY=1")  # outside systemd: nothing, no error
 
+
+def test_the_acknowledgements_share_one_deadline():
+    now = [0.0]
+    given = []
+
+    class Slow(FakeInfo):
+        def wait_for_publish(self, timeout=None):
+            given.append(timeout)
+            now[0] += timeout  # never acknowledged: waits it all out
+
+        def is_published(self):
+            return False
+
+    infos = [Slow([], "registration"), Slow([], "status")]
+    assert fleet_agent.confirmed(infos, 30, clock=lambda: now[0]) is False
+    assert given == [30, 0.0] and now[0] == 30
+

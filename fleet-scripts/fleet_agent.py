@@ -94,12 +94,13 @@ def sd_notify(message):
         s.sendall(message.encode())
 
 
-def confirmed(infos, timeout):
+def confirmed(infos, timeout, clock=time.monotonic):
     """Wait (up to `timeout` s in all) for the broker to acknowledge each
     QoS 1 publish; True when all were."""
+    deadline = clock() + timeout
     for info in infos:
         try:
-            info.wait_for_publish(timeout=timeout)
+            info.wait_for_publish(timeout=max(0.0, deadline - clock()))
         except (RuntimeError, ValueError):
             return False
     return all(info.is_published() for info in infos)
