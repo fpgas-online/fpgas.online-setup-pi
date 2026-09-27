@@ -4,8 +4,9 @@
 Publishes a retained registration document, a retained 60 s status beat
 (with a retained LWT so the broker flips the Pi offline within seconds of
 it vanishing), and a shutdown status + event on SIGTERM. Re-collects the
-document every 6 h or on SIGHUP and republishes registration only when the
-fingerprint changes.
+document every 6 h or on SIGHUP -- and on every beat for the first hour
+after boot, while the Pi settles -- and republishes registration only when
+the fingerprint changes.
 
 Config: /etc/fpgas-online/fleet.toml (site, broker, port — no credentials,
 the site broker's LAN listener is anonymous). stdlib + python3-paho-mqtt.
@@ -22,6 +23,14 @@ import tomllib
 CONFIG_PATH = "/etc/fpgas-online/fleet.toml"
 BEAT_SECONDS = 60
 RECOLLECT_EVERY = 6 * 60 * 60 // BEAT_SECONDS  # beats between re-collects
+# The agent starts early in the boot, so the site knows the Pi is up, before
+# what the document describes has settled: the FPGA boot check (fpgas-verify,
+# up to 30 min) runs after the agent and leaves its board running a test
+# design, and the TT bridge (whose /health says which TT board is fitted)
+# starts only once the check is done. So until the Pi has been up this long,
+# every beat re-collects (a fingerprint that did not change republishes
+# nothing).
+SETTLE_SECONDS = 60 * 60
 
 
 def fingerprint(doc):
@@ -72,8 +81,8 @@ def status_payload(boot_id, uptime_s, fingerprint):
 
 
 def run(cfg, client, collect_fn, now_fn=_now_iso, sleep_fn=time.sleep,
-        beats=None, recollect_every=RECOLLECT_EVERY):
-    """The agent loop. client/collect_fn/sleep_fn injectable for tests;
+        beats=None, recollect_every=RECOLLECT_EVERY, uptime_fn=uptime_s):
+    """The agent loop. client/collect_fn/sleep_fn/uptime_fn injectable for tests;
     beats=None runs until SIGTERM/SIGINT, an integer runs that many status
     beats then shuts down (as if signalled)."""
     stopping = []
@@ -101,11 +110,12 @@ def run(cfg, client, collect_fn, now_fn=_now_iso, sleep_fn=time.sleep,
     beat = 0
     while not stopping and (beats is None or beat < beats):
         client.publish(t["status"],
-                       json.dumps(status_payload(boot_id(), uptime_s(),
+                       json.dumps(status_payload(boot_id(), uptime_fn(),
                                                  last_fp)),
                        qos=1, retain=True)
         beat += 1
-        if recollect or beat % recollect_every == 0:
+        if (recollect or beat % recollect_every == 0
+                or uptime_fn() < SETTLE_SECONDS):
             recollect.clear()
             doc = collect_fn()
             fp = fingerprint(doc)

@@ -33,9 +33,10 @@ class FakeClient:
         self.calls.append(("disconnect",))
 
 
-def run(client, collect_fn, beats, recollect_every=360):
+def run(client, collect_fn, beats, recollect_every=360, uptime=10**6):
     fleet_agent.run(CFG, client, collect_fn, sleep_fn=lambda s: None,
-                    beats=beats, recollect_every=recollect_every)
+                    beats=beats, recollect_every=recollect_every,
+                    uptime_fn=lambda: uptime)
 
 
 def test_lwt_set_retained_on_status_topic_before_connect():
@@ -119,3 +120,24 @@ def test_mqtt_client_on_paho_1_passes_no_callback_api():
 
 def test_mqtt_client_on_paho_2_picks_callback_api_version2():
     assert fleet_agent.mqtt_client(_Paho2).args == ("v2",)
+
+
+def test_every_beat_recollects_while_the_boot_settles():
+    # The FPGA check and then the TT bridge come up after the agent: while
+    # the Pi has been up under SETTLE_SECONDS, each beat re-collects, so the
+    # TT board (or the test design the check left running) is registered
+    # within a beat, not 6 h later.
+    reg_topic = "fpgas/welland/pi/c36b093f773d46b8/registration"
+    tt = {**DOC, "fpga": {"boards": [{"kind": "tt-demo-board"}]}}
+    client = FakeClient()
+    docs = [DOC, DOC, tt]
+    run(client, lambda: docs.pop(0), beats=2, uptime=120)
+    regs = [p for t, p, r in client.published if t == reg_topic]
+    assert regs == [DOC, tt]
+    # Once settled, only every recollect_every beats (or SIGHUP).
+    client = FakeClient()
+    calls = []
+    run(client, lambda: calls.append(1) or DOC, beats=3,
+        uptime=fleet_agent.SETTLE_SECONDS)
+    assert len(calls) == 1
+
