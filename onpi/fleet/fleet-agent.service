@@ -1,10 +1,26 @@
 [Unit]
 Description=fpgas.online fleet agent (registration + status + LWT)
 Wants=network-online.target
-After=network-online.target fpgas-tt.service
+# Early, so the site knows the Pi is up (registered, online) before the FPGA
+# boot check starts, and hears its fpga-verifying. Not After=fpgas-tt.service:
+# the TT bridge starts only once fpgas-verify (fpgas.online-test-designs) is
+# done, and fpgas-verify is After= this unit, so waiting for the bridge would
+# be an ordering cycle, which systemd breaks by dropping a start job. The
+# agent re-collects on every beat while the boot settles (fleet_agent.py
+# SETTLE_SECONDS), which picks up the TT board once the bridge answers.
+After=network-online.target
 ConditionPathExists=/etc/fpgas-online/fleet.toml
 
 [Service]
+# Ready once the broker has acknowledged its registration and first status
+# (fleet_agent.py): fpgas-verify, After= this unit, publishes fpga-verifying,
+# which the site drops for a machine that has not registered. The agent says
+# ready after READY_WAIT_SECONDS even if the broker has not answered. A broker
+# it cannot reach fails the start within seconds (paho's 5 s connect timeout;
+# Restart= tries again), and TimeoutStartSec bounds a slow collect plus the
+# wait: either way the check, which is only ordered after this unit, goes on.
+Type=notify
+TimeoutStartSec=90
 ExecStart=/usr/bin/python3 /usr/local/lib/fpgas-online/fleet/fleet_agent.py
 Restart=always
 RestartSec=10
