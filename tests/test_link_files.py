@@ -4,7 +4,13 @@
 eth-uplink, and nothing else: never a USB Ethernet adapter, which an FPGA's
 Ethernet test plugs in and which can share the onboard NIC's driver.
 
-The device paths are the boards' own (sysfs, read on fleet boards); the
+Where each device path comes from (the review of setup-pi #18 asked this be said):
+Pi 3B+: read on fleet boards (eth-uplink on the fleet since before #299);
+Pi 5/CM5: the node name read (dmesg "macb 1f00100000.ethernet", RP1 siblings
+under axi/1000120000.pcie in sysfs), the full path not read; Pi 4B/CM4 and
+Orange Pi PC: from the device tree only (fd580000.ethernet on scb; the H3's
+ethernet@1c30000), not read on a board. The infra VM test boots the Pi 4B's;
+root 7 reboots one Pi 5 first (fpgas.online-infra PR #300, Rollout). The
 ID_PATH udev derives from each is computed here the way udev's path_id
 builtin does for platform and USB devices (src/udev/udev-builtin-path_id.c:
 a platform device contributes "platform-<name>" and its platform parents are
