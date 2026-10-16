@@ -10,7 +10,7 @@ builtin does for platform and USB devices (src/udev/udev-builtin-path_id.c:
 a platform device contributes "platform-<name>" and its platform parents are
 skipped; a USB interface contributes "usb-0:<port>:<config>.<interface>" and
 its USB parents are skipped). The Pi 3B+ row checks that model against the
-value already proven on the fleet: its NIC has been eth-uplink since 2021.
+value already proven on the fleet: its NIC was eth-uplink before #299.
 """
 
 import configparser
