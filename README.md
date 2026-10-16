@@ -26,7 +26,7 @@ Deployment is managed by the `onpi` Ansible role in [fpgas.online-infra](https:/
 - **FPGA board detection** -- systemd services (`arty_here`, `arty_blink`, `arty_wire`) that detect and interact with attached Arty A7 boards.
 - **Status reporting** -- `pistat` systemd services backed by Python scripts that report Pi health and state to the central server.
 - **Console banner** -- login banner showing node identity and status.
-- **Network interface naming** -- udev `.link` files for predictable network interface names.
+- **Network interface naming** -- udev `.link` files, matched by device path: on a netbooted board (`nfsroot=` on the kernel command line) the onboard NIC that carries the NFS root is `eth-uplink` on every model (Pi 3B+, Pi 4B and CM4, Pi 5 and CM5, Orange Pi PC), renamed in the initramfs; a Pi 3B+'s USB port 1.2 adapter is `eth-fpga`.
 - **SSH configuration** -- authorized keys and SSH daemon settings for remote management.
 - **Profile scripts** -- `/etc/profile.d/` scripts for environment setup on login.
 - **Keyboard configuration** -- console keyboard layout settings.

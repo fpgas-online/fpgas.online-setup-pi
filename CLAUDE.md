@@ -20,7 +20,7 @@ deb package on each Pi via `apt install fpgas-online-setup-pi`.
 - **Shell environment**: zsh, tmux, zprofile configs (in `onpi/tmux/`)
 - **FPGA board detection**: arty_here, arty_blink, arty_wire systemd services and scripts (in `onpi/`)
 - **Pi status reporting**: pistat systemd services + Python sender scripts (in `onpi/` and `pistat-scripts/`)
-- **Network interface naming**: USB-path-based .link files for eth-uplink and eth-fpga (in `fixpi/etc/systemd/network/`)
+- **Network interface naming**: device-path-based .link files: `eth-uplink` for the onboard NIC of every netbooted model (Pi 3B+, Pi 4B/CM4, Pi 5/CM5, Orange Pi PC), `eth-fpga` for the Pi 3B+'s USB port 1.2 (in `fixpi/etc/systemd/network/`; checked by `tests/test_link_files.py`)
 - **System config**: SSH password config, US keyboard, console banner, profile.d scripts (in `fixpi/`)
 - **FEL boot host**: `fpgas-felboot@.service` + udev rule + vendored U-Boot that boot Allwinner (Orange Pi H3) boards found in USB FEL mode (in `felboot/`; test with `bash felboot/test_felboot.sh`)
 
