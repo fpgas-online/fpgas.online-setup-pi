@@ -16,6 +16,9 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: astral-sh/setup-uv@v5
+      - name: Install zsh and tmux
+        # The zprofile tests run onpi/tmux/zprofile under zsh against a private tmux server.
+        run: sudo apt-get install -y zsh tmux
       - name: Run tests
         run: uv run --with pytest pytest tests/ -v
   fleet-mqtt:
