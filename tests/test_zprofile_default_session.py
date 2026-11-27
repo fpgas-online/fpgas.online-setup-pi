@@ -92,3 +92,31 @@ def test_login_keeps_existing_default_session(tmp_path, private_tmux):
 
     assert "duplicate session" not in second.stderr
     assert tmux(socket, "display-message", "-p", "-t", "default", "#{session_id}").stdout == created
+
+
+def test_login_recreates_default_when_only_a_login_session_is_left(tmp_path, private_tmux):
+    """`has-session -t default` would prefix-match `default-1`; the check is exact."""
+    socket, env = private_tmux
+    first = run_login_block(tmp_path, env)
+    assert tmux(socket, "has-session", "-t", "=default").returncode == 0, first.stderr
+    left = subprocess.run(
+        ["tmux", "-L", socket, "new-session", "-d", "-t", "=default", "-P", "-F", "#{session_name}"],
+        capture_output=True, text=True, env=env,
+    ).stdout.strip()
+    assert left == "default-1"
+    assert tmux(socket, "kill-session", "-t", "=default").returncode == 0
+
+    result = run_login_block(tmp_path, env)
+
+    assert tmux(socket, "has-session", "-t", "=default").returncode == 0, result.stderr
+    windows = tmux(socket, "list-windows", "-t", "=default", "-F", "#{window_name}")
+    assert windows.stdout.split() == ["h"]
+
+
+def test_first_login_prints_no_tmux_error(tmp_path, private_tmux):
+    """No server runs after boot; the has-session check must not print "error connecting"."""
+    _, env = private_tmux
+
+    result = run_login_block(tmp_path, env)
+
+    assert "error connecting" not in result.stdout + result.stderr
