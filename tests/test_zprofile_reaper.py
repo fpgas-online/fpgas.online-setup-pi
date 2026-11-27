@@ -1,0 +1,305 @@
+"""onpi/tmux/zprofile reaps abandoned login sessions (setup-pi #21).
+
+Each login runs `exec tmux new-session -t default \\; new-window`, which adds
+a new session to the session group of `default`. tmux names it itself:
+`default-<id>` on tmux 3.x (3.3a on bookworm, 3.5a on trixie), a bare `<id>`
+on older tmux, where <id> is the number in its `#{session_id}` (`$<id>`).
+When the login goes away the session stays, so each login first kills the
+sessions it should.
+
+The rule: only while the session `default` itself is in the group, kill a
+session only when it is in the `default` group, is not `default` itself,
+still has the name tmux gave it, holds no window that no other session has,
+and has no client attached when the kill reaches the server. A session the
+user renamed is kept, as the zprofile's header promises.
+
+The test runs the zprofile's own reaper lines under zsh: from the "# Reap"
+comment up to but not including the `exec tmux new-session` line (which would
+replace the shell with a tmux client). `tmux` is a zsh function that sends
+every call to a private tmux server (`-L <unique name> -f /dev/null`), which
+the fixture kills afterwards, so the user's own tmux server is never touched.
+Some tests wrap that function to make something happen between the reaper's
+steps, as another login or client would.
+
+Skipped when zsh or tmux is missing; ZPROFILE_TESTS_REQUIRED=1 (set in CI)
+makes that a failure instead.
+"""
+
+import os
+import pathlib
+import pty
+import shutil
+import subprocess
+import time
+import uuid
+
+import pytest
+
+ZPROFILE = pathlib.Path(__file__).parent.parent / "onpi" / "tmux" / "zprofile"
+
+REQUIRED = os.environ.get("ZPROFILE_TESTS_REQUIRED") == "1"
+MISSING = [tool for tool in ("zsh", "tmux") if shutil.which(tool) is None]
+
+
+@pytest.fixture(autouse=True)
+def _needs_zsh_and_tmux():
+    if MISSING:
+        if REQUIRED:
+            pytest.fail(f"{' and '.join(MISSING)} not installed and ZPROFILE_TESTS_REQUIRED=1")
+        pytest.skip(f"needs {' and '.join(MISSING)} (apt install zsh tmux)")
+
+
+# Where tmux puts the socket of `tmux -L <name>`.
+SOCKET_DIR = pathlib.Path(os.environ.get("TMUX_TMPDIR") or "/tmp") / f"tmux-{os.getuid()}"
+
+# Every `tmux` the zprofile lines run goes to the private server.
+TMUX_FUNCTION = 'tmux() { command tmux -L "${TEST_TMUX_SOCKET:?}" -f /dev/null "$@" }\n'
+
+
+def reaper_block() -> str:
+    """The zprofile's reaper: from the "# Reap" comment to `exec tmux new-session`."""
+    lines = ZPROFILE.read_text().splitlines()
+    start = next(i for i, line in enumerate(lines) if line.strip().startswith("# Reap"))
+    end = next(i for i in range(start, len(lines)) if lines[i].strip().startswith("exec tmux new-session"))
+    block = "\n".join(lines[start:end]) + "\n"
+    assert "exec" not in block
+    return block
+
+
+@pytest.fixture
+def server(tmp_path):
+    """A private tmux server: (socket name, environment for the zprofile lines)."""
+    socket = f"setup-pi-test-{os.getpid()}-{uuid.uuid4().hex[:8]}"
+    env = {k: v for k, v in os.environ.items() if k != "TMUX"}
+    env.update(HOME=str(tmp_path), TEST_TMUX_SOCKET=socket, TERM="xterm-256color")
+    clients = []
+    try:
+        yield socket, env, clients
+    finally:
+        # Clients first: nothing reads their pty, so one can block on a full
+        # pty buffer, and kill-server would then wait for it.
+        for client, controller in clients:
+            client.kill()
+            client.wait()
+            os.close(controller)
+        subprocess.run(["tmux", "-L", socket, "kill-server"], capture_output=True)
+        # tmux leaves the socket file behind; it is where tmux puts -L sockets.
+        (SOCKET_DIR / socket).unlink(missing_ok=True)
+
+
+def tmux(socket, *args, env=None):
+    result = subprocess.run(
+        ["tmux", "-L", socket, "-f", "/dev/null", *args], capture_output=True, text=True, env=env
+    )
+    assert result.returncode == 0, result.stderr
+    return result.stdout
+
+
+def sessions(socket):
+    return set(tmux(socket, "list-sessions", "-F", "#{session_name}").split("\n")) - {""}
+
+
+def login_session(socket, env):
+    """A session made the way a login makes one; tmux picks its name."""
+    return tmux(socket, "new-session", "-d", "-t", "default", "-P", "-F", "#{session_name}", env=env).strip()
+
+
+def attach(socket, env, clients, session):
+    """Attach a client to `session` on a pseudo-terminal, as a live login would be."""
+    controller, terminal = pty.openpty()
+    client = subprocess.Popen(
+        ["tmux", "-L", socket, "-f", "/dev/null", "attach-session", "-t", session],
+        stdin=terminal, stdout=terminal, stderr=terminal, env=env, start_new_session=True,
+    )
+    os.close(terminal)
+    clients.append((client, controller))
+    for _ in range(100):
+        if tmux(socket, "display-message", "-p", "-t", session, "#{session_attached}").strip() == "1":
+            return
+        time.sleep(0.05)
+    pytest.fail(f"client did not attach to {session}")
+
+
+def run_reaper(tmp_path, env, prelude=""):
+    """Run the reaper lines; `prelude` (zsh) may wrap the `tmux` function."""
+    script = tmp_path / "reap.zsh"
+    script.write_text(TMUX_FUNCTION + prelude + reaper_block())
+    return subprocess.run(["zsh", "-f", str(script)], env=env, capture_output=True, text=True, timeout=30)
+
+
+def test_reaper(tmp_path, server):
+    socket, env, clients = server
+    tmux(socket, "new-session", "-d", "-s", "default", "-n", "h", env=env)
+
+    abandoned = login_session(socket, env)  # default-<id> on tmux 3.x
+    in_use = login_session(socket, env)
+    attach(socket, env, clients, in_use)
+    renamed = login_session(socket, env)
+    tmux(socket, "rename-session", "-t", renamed, "my-tiles", env=env)
+    # A login session as older tmux named it: the bare number of its session id.
+    old_style = tmux(socket, "display-message", "-p", "#{next_session_id}", env=env).strip().lstrip("$")
+    tmux(socket, "new-session", "-d", "-t", "default", "-s", old_style, env=env)
+    # Sessions outside the default group are never touched.
+    tmux(socket, "new-session", "-d", "-s", "other", env=env)
+    other_member = tmux(socket, "new-session", "-d", "-t", "other", "-P", "-F", "#{session_name}", env=env).strip()
+    tmux(socket, "new-session", "-d", "-s", "42", env=env)  # numeric, ungrouped
+
+    result = run_reaper(tmp_path, env)
+
+    assert result.returncode == 0, result.stderr
+    assert sessions(socket) == {"default", in_use, "my-tiles", "other", other_member, "42"}, (
+        f"abandoned={abandoned} old_style={old_style}\n{result.stderr}"
+    )
+
+
+def test_reaper_keeps_default_alone(tmp_path, server):
+    socket, env, _ = server
+    tmux(socket, "new-session", "-d", "-s", "default", "-n", "h", env=env)
+
+    result = run_reaper(tmp_path, env)
+
+    assert result.returncode == 0, result.stderr
+    assert sessions(socket) == {"default"}
+
+
+def windows(socket):
+    """Every window on the server, by name, however many sessions link it."""
+    out = tmux(socket, "list-windows", "-a", "-F", "#{window_id} #{window_name}")
+    return {line.split(" ", 1)[1] for line in out.splitlines()}
+
+
+def test_reaper_keeps_the_group_when_default_is_gone(tmp_path, server):
+    """With default killed, the last login session holds the group's windows: keep it."""
+    socket, env, _ = server
+    tmux(socket, "new-session", "-d", "-s", "default", "-n", "h", env=env)
+    last = login_session(socket, env)
+    tmux(socket, "new-window", "-d", "-t", last, "-n", "job", env=env)
+    tmux(socket, "kill-session", "-t", "=default", env=env)
+
+    result = run_reaper(tmp_path, env)
+
+    assert result.returncode == 0, result.stderr
+    assert sessions(socket) == {last}, result.stderr  # and so the server is still running
+    assert "job" in windows(socket)
+
+
+def test_reaper_leaves_the_old_group_to_a_recreated_default(tmp_path, server):
+    """A re-created default is not in the old group: the old group's sessions are kept."""
+    socket, env, _ = server
+    tmux(socket, "new-session", "-d", "-s", "default", "-n", "h", env=env)
+    old = login_session(socket, env)
+    tmux(socket, "new-window", "-d", "-t", old, "-n", "job", env=env)
+    tmux(socket, "kill-session", "-t", "=default", env=env)
+    tmux(socket, "new-session", "-d", "-s", "default", "-n", "h", env=env)
+
+    result = run_reaper(tmp_path, env)
+
+    assert result.returncode == 0, result.stderr
+    assert sessions(socket) == {"default", old}, result.stderr
+    assert "job" in windows(socket)
+
+
+def test_reaper_never_closes_a_window(tmp_path, server):
+    """A re-created default joins the old group on the next login without its windows.
+
+    tmux reuses the group named default for it, but the re-created default only
+    has its own window h; the old windows live only in the login sessions. Reaping
+    them all would close the job window, so the last one holding it is kept.
+    """
+    socket, env, _ = server
+    tmux(socket, "new-session", "-d", "-s", "default", "-n", "h", env=env)
+    old = login_session(socket, env)
+    tmux(socket, "new-window", "-d", "-t", old, "-n", "job", env=env)
+    tmux(socket, "kill-session", "-t", "=default", env=env)
+    tmux(socket, "new-session", "-d", "-s", "default", "-n", "h", env=env)
+    joined = login_session(socket, env)  # the login after the re-create
+    group = tmux(socket, "display-message", "-p", "-t", "=default:", "#{session_group}", env=env).strip()
+    assert group == "default"
+
+    result = run_reaper(tmp_path, env)
+
+    assert result.returncode == 0, result.stderr
+    assert "job" in windows(socket), result.stderr
+    left = sessions(socket) - {"default"}
+    assert len(left) == 1 and left <= {old, joined}, left
+
+
+# The wrapped function: the private server, as TMUX_FUNCTION's.
+TMUX_REAL = 'tmux_real() { command tmux -L "${TEST_TMUX_SOCKET:?}" -f /dev/null "$@" }\n'
+
+# Just before the reaper's kill command (kill-session, or if-shell around it),
+# a client attaches to the session it targets: a control client, its stdin a
+# fifo the script holds open. (Not in a $(...) subshell: the fifo would close
+# when the subshell exits, and the client would detach again.)
+ATTACH_MEANWHILE = TMUX_REAL + r"""
+tmux() {
+	if [[ ( $1 == kill-session || $1 == if-shell ) && -z $attached ]]; then
+		attached=1
+		local target=${@[${@[(i)-t]}+1]}
+		mkfifo "$HOME/client.fifo"
+		tmux_real -C attach-session -t "$target" < "$HOME/client.fifo" > "$HOME/client.out" &
+		exec 3> "$HOME/client.fifo"
+		repeat 100; do
+			[[ $(tmux_real display-message -p -t "$target:" '#{session_attached}') == 1 ]] && break
+			sleep 0.05
+		done
+	fi
+	tmux_real "$@"
+}
+"""
+
+
+# Before the reaper's `list-windows -t <session>`, another login reaps it.
+REAPED_MEANWHILE = TMUX_REAL + r"""
+tmux() {
+	[[ $1 == list-windows ]] && tmux_real kill-session -t "$3"
+	tmux_real "$@"
+}
+"""
+
+# `list-windows -t <session> -F '#{window_linked_sessions_list}'` reports a
+# window linked twice into that session and into no other.
+LINKED_TWICE = TMUX_REAL + r"""
+tmux() {
+	if [[ $1 == list-windows ]]; then
+		local name=$(tmux_real display-message -p -t "$3:" '#{session_name}')
+		print -r -- "$name,$name"
+		return
+	fi
+	tmux_real "$@"
+}
+"""
+
+
+def test_reaper_keeps_a_session_a_client_attaches_to_meanwhile(tmp_path, server):
+    """The attached check and the kill are one server command."""
+    socket, env, _ = server
+    tmux(socket, "new-session", "-d", "-s", "default", "-n", "h", env=env)
+    login = login_session(socket, env)
+
+    result = run_reaper(tmp_path, env, ATTACH_MEANWHILE)
+
+    assert result.returncode == 0, result.stderr
+    assert sessions(socket) == {"default", login}, result.stderr
+
+
+def test_reaper_is_quiet_when_another_login_reaped_first(tmp_path, server):
+    socket, env, _ = server
+    tmux(socket, "new-session", "-d", "-s", "default", "-n", "h", env=env)
+    login_session(socket, env)
+
+    result = run_reaper(tmp_path, env, REAPED_MEANWHILE)
+
+    assert result.stdout + result.stderr == ""
+    assert sessions(socket) == {"default"}
+
+
+def test_reaper_keeps_a_window_linked_twice_into_only_this_session(tmp_path, server):
+    socket, env, _ = server
+    tmux(socket, "new-session", "-d", "-s", "default", "-n", "h", env=env)
+    login = login_session(socket, env)
+
+    result = run_reaper(tmp_path, env, LINKED_TWICE)
+
+    assert result.returncode == 0, result.stderr
+    assert sessions(socket) == {"default", login}, result.stderr
