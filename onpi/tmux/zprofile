@@ -49,9 +49,16 @@ if [[ ( -z "$STY" ) && (( ! -z "$SSH_CONNECTION" ) || ( x"$TERM" == x"xterm-256c
 		# Create the default session that all our windows will be in...
 		tmux new-session -d -s default -n h "tail -f ~/.tmux-help" \; setw remain-on-exit\; send-keys C-c
         fi
-	# Reap any unamed sessions which don't have anything attached
-	for session in `tmux list-sessions | grep -v attached | grep '^[0-9]*:' | sed -e's/:.*//'`; do
-		tmux kill-session -t $session;
+	# Reap any unamed sessions which don't have anything attached: sessions in
+	# the group of "default" (other than "default" itself) with no client.
+	# tmux names a login's session after its session id ($4 is "default-4" on
+	# tmux 3.x, "4" on older tmux); a session renamed to anything else is kept.
+	for reap in ${(f)"$(tmux list-sessions -F '#{session_id} #{session_name}' -f '#{&&:#{==:#{session_group},default},#{&&:#{!=:#{session_name},default},#{==:#{session_attached},0}}}')"}; do
+		reap_id=${reap%% *}
+		reap_name=${reap#* }
+		if [[ $reap_id == '$'<-> && ( $reap_name == "default-${reap_id#?}" || $reap_name == "${reap_id#?}" ) ]]; then
+			tmux kill-session -t "$reap_id"
+		fi
 	done
 	# Start a new window.
 	exec tmux new-session -t default\;
