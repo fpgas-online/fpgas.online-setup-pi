@@ -53,13 +53,20 @@ if [[ ( -z "$STY" ) && (( ! -z "$SSH_CONNECTION" ) || ( x"$TERM" == x"xterm-256c
 	# the group of "default" (other than "default" itself) with no client.
 	# tmux names a login's session after its session id ($4 is "default-4" on
 	# tmux 3.x, "4" on older tmux); a session renamed to anything else is kept.
-	for reap in ${(f)"$(tmux list-sessions -F '#{session_id} #{session_name}' -f '#{&&:#{==:#{session_group},default},#{&&:#{!=:#{session_name},default},#{==:#{session_attached},0}}}')"}; do
-		reap_id=${reap%% *}
-		reap_name=${reap#* }
-		if [[ $reap_id == '$'<-> && ( $reap_name == "default-${reap_id#?}" || $reap_name == "${reap_id#?}" ) ]]; then
-			tmux kill-session -t "$reap_id"
-		fi
-	done
+	# Reap only while the session default itself is in that group (if it was
+	# killed or renamed, the login sessions hold the group's windows), and never
+	# a session holding a window no other session has: reaping closes no window.
+	if [[ "$(tmux display-message -p -t '=default:' '#{session_group}')" == default ]]; then
+		for reap in ${(f)"$(tmux list-sessions -F '#{session_id} #{session_name}' -f '#{&&:#{==:#{session_group},default},#{&&:#{!=:#{session_name},default},#{==:#{session_attached},0}}}')"}; do
+			reap_id=${reap%% *}
+			reap_name=${reap#* }
+			[[ $reap_id == '$'<-> && ( $reap_name == "default-${reap_id#?}" || $reap_name == "${reap_id#?}" ) ]] || continue
+			# One line per window, listing the sessions it is in: a line that is
+			# just this session's name is a window no other session has.
+			reap_windows=(${(f)"$(tmux list-windows -t "$reap_id" -F '#{window_linked_sessions_list}')"})
+			(( ${reap_windows[(Ie)$reap_name]} )) || tmux kill-session -t "$reap_id"
+		done
+	fi
 	# Start a new window.
 	exec tmux new-session -t default\;
 else

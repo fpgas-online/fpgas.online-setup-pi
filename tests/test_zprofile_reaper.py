@@ -61,12 +61,15 @@ def server(tmp_path):
     try:
         yield socket, env, clients
     finally:
+        # Clients first: nothing reads their pty, so one can block on a full
+        # pty buffer, and kill-server would then wait for it.
+        for client, controller in clients:
+            client.kill()
+            client.wait()
+            os.close(controller)
         subprocess.run(["tmux", "-L", socket, "kill-server"], capture_output=True)
         # tmux leaves the socket file behind; it is where tmux puts -L sockets.
         (SOCKET_DIR / socket).unlink(missing_ok=True)
-        for client in clients:
-            client.kill()
-            client.wait()
 
 
 def tmux(socket, *args, env=None):
@@ -94,7 +97,7 @@ def attach(socket, env, clients, session):
         stdin=terminal, stdout=terminal, stderr=terminal, env=env, start_new_session=True,
     )
     os.close(terminal)
-    clients.append(client)
+    clients.append((client, controller))
     for _ in range(100):
         if tmux(socket, "display-message", "-p", "-t", session, "#{session_attached}").strip() == "1":
             return
@@ -141,3 +144,65 @@ def test_reaper_keeps_default_alone(tmp_path, server):
 
     assert result.returncode == 0, result.stderr
     assert sessions(socket) == {"default"}
+
+
+def windows(socket):
+    """Every window on the server, by name, however many sessions link it."""
+    out = tmux(socket, "list-windows", "-a", "-F", "#{window_id} #{window_name}")
+    return {line.split(" ", 1)[1] for line in out.splitlines()}
+
+
+def test_reaper_keeps_the_group_when_default_is_gone(tmp_path, server):
+    """With default killed, the last login session holds the group's windows: keep it."""
+    socket, env, _ = server
+    tmux(socket, "new-session", "-d", "-s", "default", "-n", "h", env=env)
+    last = login_session(socket, env)
+    tmux(socket, "new-window", "-d", "-t", last, "-n", "job", env=env)
+    tmux(socket, "kill-session", "-t", "=default", env=env)
+
+    result = run_reaper(tmp_path, env)
+
+    assert result.returncode == 0, result.stderr
+    assert sessions(socket) == {last}, result.stderr  # and so the server is still running
+    assert "job" in windows(socket)
+
+
+def test_reaper_leaves_the_old_group_to_a_recreated_default(tmp_path, server):
+    """A re-created default is not in the old group: the old group's sessions are kept."""
+    socket, env, _ = server
+    tmux(socket, "new-session", "-d", "-s", "default", "-n", "h", env=env)
+    old = login_session(socket, env)
+    tmux(socket, "new-window", "-d", "-t", old, "-n", "job", env=env)
+    tmux(socket, "kill-session", "-t", "=default", env=env)
+    tmux(socket, "new-session", "-d", "-s", "default", "-n", "h", env=env)
+
+    result = run_reaper(tmp_path, env)
+
+    assert result.returncode == 0, result.stderr
+    assert sessions(socket) == {"default", old}, result.stderr
+    assert "job" in windows(socket)
+
+
+def test_reaper_never_closes_a_window(tmp_path, server):
+    """A re-created default joins the old group on the next login without its windows.
+
+    tmux reuses the group named default for it, but the re-created default only
+    has its own window h; the old windows live only in the login sessions. Reaping
+    them all would close the job window, so the last one holding it is kept.
+    """
+    socket, env, _ = server
+    tmux(socket, "new-session", "-d", "-s", "default", "-n", "h", env=env)
+    old = login_session(socket, env)
+    tmux(socket, "new-window", "-d", "-t", old, "-n", "job", env=env)
+    tmux(socket, "kill-session", "-t", "=default", env=env)
+    tmux(socket, "new-session", "-d", "-s", "default", "-n", "h", env=env)
+    joined = login_session(socket, env)  # the login after the re-create
+    group = tmux(socket, "display-message", "-p", "-t", "=default:", "#{session_group}", env=env).strip()
+    assert group == "default"
+
+    result = run_reaper(tmp_path, env)
+
+    assert result.returncode == 0, result.stderr
+    assert "job" in windows(socket), result.stderr
+    left = sessions(socket) - {"default"}
+    assert len(left) == 1 and left <= {old, joined}, left
