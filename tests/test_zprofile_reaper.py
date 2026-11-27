@@ -15,6 +15,9 @@ comment up to but not including the `exec tmux new-session` line (which would
 replace the shell with a tmux client). `tmux` is a zsh function that sends
 every call to a private tmux server (`-L <unique name> -f /dev/null`), which
 the fixture kills afterwards, so the user's own tmux server is never touched.
+
+Skipped when zsh or tmux is missing; ZPROFILE_TESTS_REQUIRED=1 (set in CI)
+makes that a failure instead.
 """
 
 import os
@@ -29,10 +32,17 @@ import pytest
 
 ZPROFILE = pathlib.Path(__file__).parent.parent / "onpi" / "tmux" / "zprofile"
 
-pytestmark = pytest.mark.skipif(
-    shutil.which("zsh") is None or shutil.which("tmux") is None,
-    reason="needs zsh and tmux (apt install zsh tmux)",
-)
+REQUIRED = os.environ.get("ZPROFILE_TESTS_REQUIRED") == "1"
+MISSING = [tool for tool in ("zsh", "tmux") if shutil.which(tool) is None]
+
+
+@pytest.fixture(autouse=True)
+def _needs_zsh_and_tmux():
+    if MISSING:
+        if REQUIRED:
+            pytest.fail(f"{' and '.join(MISSING)} not installed and ZPROFILE_TESTS_REQUIRED=1")
+        pytest.skip(f"needs {' and '.join(MISSING)} (apt install zsh tmux)")
+
 
 # Where tmux puts the socket of `tmux -L <name>`.
 SOCKET_DIR = pathlib.Path(os.environ.get("TMUX_TMPDIR") or "/tmp") / f"tmux-{os.getuid()}"
@@ -105,9 +115,10 @@ def attach(socket, env, clients, session):
     pytest.fail(f"client did not attach to {session}")
 
 
-def run_reaper(tmp_path, env):
+def run_reaper(tmp_path, env, prelude=""):
+    """Run the reaper lines; `prelude` (zsh) may wrap the `tmux` function."""
     script = tmp_path / "reap.zsh"
-    script.write_text(TMUX_FUNCTION + reaper_block())
+    script.write_text(TMUX_FUNCTION + prelude + reaper_block())
     return subprocess.run(["zsh", "-f", str(script)], env=env, capture_output=True, text=True, timeout=30)
 
 
