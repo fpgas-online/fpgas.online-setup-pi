@@ -1,20 +1,25 @@
 """onpi/tmux/zprofile reaps abandoned login sessions (setup-pi #21).
 
-Each login runs `exec tmux new-session -t default`, which adds a new session
-to the session group of `default`. tmux names it itself: `default-<id>` on
-tmux 3.x (3.3a on bookworm, 3.5a on trixie), a bare `<id>` on older tmux,
-where <id> is the number in its `#{session_id}` (`$<id>`). When the login goes
-away the session stays, so each login first kills the sessions it should.
+Each login runs `exec tmux new-session -t default \\; new-window`, which adds
+a new session to the session group of `default`. tmux names it itself:
+`default-<id>` on tmux 3.x (3.3a on bookworm, 3.5a on trixie), a bare `<id>`
+on older tmux, where <id> is the number in its `#{session_id}` (`$<id>`).
+When the login goes away the session stays, so each login first kills the
+sessions it should.
 
-The rule: kill a session only when it is in the `default` group, is not
-`default` itself, has no client attached, and still has the name tmux gave
-it. A session the user renamed is kept, as the zprofile's header promises.
+The rule: only while the session `default` itself is in the group, kill a
+session only when it is in the `default` group, is not `default` itself,
+still has the name tmux gave it, holds no window that no other session has,
+and has no client attached when the kill reaches the server. A session the
+user renamed is kept, as the zprofile's header promises.
 
 The test runs the zprofile's own reaper lines under zsh: from the "# Reap"
 comment up to but not including the `exec tmux new-session` line (which would
 replace the shell with a tmux client). `tmux` is a zsh function that sends
 every call to a private tmux server (`-L <unique name> -f /dev/null`), which
 the fixture kills afterwards, so the user's own tmux server is never touched.
+Some tests wrap that function to make something happen between the reaper's
+steps, as another login or client would.
 
 Skipped when zsh or tmux is missing; ZPROFILE_TESTS_REQUIRED=1 (set in CI)
 makes that a failure instead.
@@ -217,3 +222,84 @@ def test_reaper_never_closes_a_window(tmp_path, server):
     assert "job" in windows(socket), result.stderr
     left = sessions(socket) - {"default"}
     assert len(left) == 1 and left <= {old, joined}, left
+
+
+# The wrapped function: the private server, as TMUX_FUNCTION's.
+TMUX_REAL = 'tmux_real() { command tmux -L "${TEST_TMUX_SOCKET:?}" -f /dev/null "$@" }\n'
+
+# Just before the reaper's kill command (kill-session, or if-shell around it),
+# a client attaches to the session it targets: a control client, its stdin a
+# fifo the script holds open. (Not in a $(...) subshell: the fifo would close
+# when the subshell exits, and the client would detach again.)
+ATTACH_MEANWHILE = TMUX_REAL + r"""
+tmux() {
+	if [[ ( $1 == kill-session || $1 == if-shell ) && -z $attached ]]; then
+		attached=1
+		local target=${@[${@[(i)-t]}+1]}
+		mkfifo "$HOME/client.fifo"
+		tmux_real -C attach-session -t "$target" < "$HOME/client.fifo" > "$HOME/client.out" &
+		exec 3> "$HOME/client.fifo"
+		repeat 100; do
+			[[ $(tmux_real display-message -p -t "$target:" '#{session_attached}') == 1 ]] && break
+			sleep 0.05
+		done
+	fi
+	tmux_real "$@"
+}
+"""
+
+
+# Before the reaper's `list-windows -t <session>`, another login reaps it.
+REAPED_MEANWHILE = TMUX_REAL + r"""
+tmux() {
+	[[ $1 == list-windows ]] && tmux_real kill-session -t "$3"
+	tmux_real "$@"
+}
+"""
+
+# `list-windows -t <session> -F '#{window_linked_sessions_list}'` reports a
+# window linked twice into that session and into no other.
+LINKED_TWICE = TMUX_REAL + r"""
+tmux() {
+	if [[ $1 == list-windows ]]; then
+		local name=$(tmux_real display-message -p -t "$3:" '#{session_name}')
+		print -r -- "$name,$name"
+		return
+	fi
+	tmux_real "$@"
+}
+"""
+
+
+def test_reaper_keeps_a_session_a_client_attaches_to_meanwhile(tmp_path, server):
+    """The attached check and the kill are one server command."""
+    socket, env, _ = server
+    tmux(socket, "new-session", "-d", "-s", "default", "-n", "h", env=env)
+    login = login_session(socket, env)
+
+    result = run_reaper(tmp_path, env, ATTACH_MEANWHILE)
+
+    assert result.returncode == 0, result.stderr
+    assert sessions(socket) == {"default", login}, result.stderr
+
+
+def test_reaper_is_quiet_when_another_login_reaped_first(tmp_path, server):
+    socket, env, _ = server
+    tmux(socket, "new-session", "-d", "-s", "default", "-n", "h", env=env)
+    login_session(socket, env)
+
+    result = run_reaper(tmp_path, env, REAPED_MEANWHILE)
+
+    assert result.stdout + result.stderr == ""
+    assert sessions(socket) == {"default"}
+
+
+def test_reaper_keeps_a_window_linked_twice_into_only_this_session(tmp_path, server):
+    socket, env, _ = server
+    tmux(socket, "new-session", "-d", "-s", "default", "-n", "h", env=env)
+    login = login_session(socket, env)
+
+    result = run_reaper(tmp_path, env, LINKED_TWICE)
+
+    assert result.returncode == 0, result.stderr
+    assert sessions(socket) == {"default", login}, result.stderr

@@ -66,7 +66,7 @@ if [[ ( -z "$STY" ) && (( ! -z "$SSH_CONNECTION" ) || ( x"$TERM" == x"xterm-256c
 			tmux new-session -d -s default -n h "tail -f ~/.tmux-help" \; setw remain-on-exit\; send-keys C-c >/dev/null 2>&1
 		fi
 	fi
-	# Reap any unamed sessions which don't have anything attached: sessions in
+	# Reap any unnamed sessions which don't have anything attached: sessions in
 	# the group of "default" (other than "default" itself) with no client.
 	# tmux names a login's session after its session id ($4 is "default-4" on
 	# tmux 3.x, "4" on older tmux); a session renamed to anything else is kept.
@@ -78,10 +78,24 @@ if [[ ( -z "$STY" ) && (( ! -z "$SSH_CONNECTION" ) || ( x"$TERM" == x"xterm-256c
 			reap_id=${reap%% *}
 			reap_name=${reap#* }
 			[[ $reap_id == '$'<-> && ( $reap_name == "default-${reap_id#?}" || $reap_name == "${reap_id#?}" ) ]] || continue
-			# One line per window, listing the sessions it is in: a line that is
-			# just this session's name is a window no other session has.
-			reap_windows=(${(f)"$(tmux list-windows -t "$reap_id" -F '#{window_linked_sessions_list}')"})
-			(( ${reap_windows[(Ie)$reap_name]} )) || tmux kill-session -t "$reap_id"
+			# One line per window, listing the sessions it is in (a session
+			# twice if the window is linked into it twice): a line naming only
+			# this session is a window no other session has. An error (another
+			# login reaped the session first) names no session.
+			reap_keep=
+			for reap_window in ${(f)"$(tmux list-windows -t "$reap_id" -F '#{window_linked_sessions_list}' 2>&1)"}; do
+				if [[ ${(j:,:)${(u)${(s:,:)reap_window}}} == "$reap_name" ]]; then
+					reap_keep=1
+					break
+				fi
+			done
+			[[ -n $reap_keep ]] && continue
+			# Check that nobody attached and kill in one server command, so a
+			# client attaching in between is not detached; quietly, as a racing
+			# login may have reaped it already. A suspended client (C-z) counts
+			# as not attached, as it did before: its session is reaped, while
+			# its windows live on in the group.
+			tmux if-shell -F -t "$reap_id" '#{==:#{session_attached},0}' "kill-session -t '$reap_id'" >/dev/null 2>&1
 		done
 	fi
 	# Join the group of default and start a new window: the login would
