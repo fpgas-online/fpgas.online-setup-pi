@@ -30,6 +30,38 @@ jobs:
       - uses: astral-sh/setup-uv@v5
       - name: Install mosquitto
         run: sudo apt-get install -y mosquitto
+      - name: DIAGNOSTIC (issue 24, remove before merge)
+        run: |
+          set -x
+          sudo apt-get install -y strace || true
+          cat /etc/os-release || true
+          mosquitto -h | head -3 || true
+          command -v mosquitto || true
+          ls -l "$(command -v mosquitto || echo /usr/sbin/mosquitto)" || true
+          id
+          sudo aa-status || true
+          ls -l /etc/apparmor.d/ || true
+          ls -l /etc/apparmor.d/*mosquitto* || true
+          cat /etc/apparmor.d/*mosquitto* || true
+          uv run --with pytest python -c "print('dummy')"
+          mkdir -p tests_dummy && printf 'def test_x(tmp_path):\n    assert tmp_path.exists()\n' > tests_dummy/test_dummy.py
+          uv run --with pytest pytest tests_dummy -q -p no:cacheprovider || true
+          ls -ld /tmp /tmp/pytest-of-runner /tmp/pytest-of-runner/* || true
+          D=$(mktemp -d /tmp/pytest-of-runner/diag.XXXX) || D=$(mktemp -d)
+          ls -ld "$D"
+          printf 'listener 18831 127.0.0.1\nallow_anonymous true\n' > "$D/m.conf"
+          ls -l "$D/m.conf"
+          timeout 3 mosquitto -v -c "$D/m.conf"; echo "rc tmp-pytest=$?"
+          T=$(mktemp -d)
+          cp "$D/m.conf" "$T/m.conf"; ls -ld "$T"
+          timeout 3 mosquitto -v -c "$T/m.conf"; echo "rc tmp-mktemp=$?"
+          timeout 3 mosquitto -v -c /tmp/../tmp/$(basename "$T")/m.conf; echo "rc tmp-dotdot=$?"
+          cp "$D/m.conf" "$GITHUB_WORKSPACE/m.conf"
+          timeout 3 mosquitto -v -c "$GITHUB_WORKSPACE/m.conf"; echo "rc workspace=$?"
+          timeout 3 mosquitto -v -p 18832; echo "rc port-only=$?"
+          timeout 3 strace -f -e trace=openat,open,stat,newfstatat,statx mosquitto -v -c "$T/m.conf" || echo "strace rc=$?"
+          sudo dmesg | grep -i -E 'apparmor|mosquitto' || true
+          sudo journalctl -k --no-pager | grep -i -E 'apparmor|mosquitto' || true
       - name: Run the fleet MQTT tests on paho-mqtt ${{ matrix.paho }}
         env:
           FLEET_MQTT_REQUIRED: "1"
