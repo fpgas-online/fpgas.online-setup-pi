@@ -45,7 +45,6 @@ done
 
 if [[ ( -z "$STY" ) && (( ! -z "$SSH_CONNECTION" ) || ( x"$TERM" == x"xterm-256color" ) || ( x"$TERM" == x"xterm" ) || ( x"$TERM" == x"linux" )) ]]; then
         if ! tmux has-session -t '=default' >/dev/null 2>&1; then
-	else
 		# Create the default session that all our windows will be in...
 		tmux new-session -d -s default -n h "tail -f ~/.tmux-help" \; setw remain-on-exit\; send-keys C-c
         fi
