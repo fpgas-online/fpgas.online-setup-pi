@@ -52,8 +52,10 @@ if [[ ( -z "$STY" ) && (( ! -z "$SSH_CONNECTION" ) || ( x"$TERM" == x"xterm-256c
 	for session in `tmux list-sessions | grep -v attached | grep '^[0-9]*:' | sed -e's/:.*//'`; do
 		tmux kill-session -t $session;
 	done
-	# Start a new window.
-	exec tmux new-session -t default\;
+	# Join the group of default and start a new window: the login would
+	# otherwise land on the group's first window, the help window h, whose
+	# pane is dead (send-keys C-c above ended its tail).
+	exec tmux new-session -t default \; new-window
 else
         echo "Not starting tmux!"
 	echo "STY='$STY' SSH_CONNECTION='$SSH_CONNECTION' TERM='$TERM'"
