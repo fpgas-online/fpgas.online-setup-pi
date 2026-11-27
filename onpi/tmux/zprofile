@@ -44,10 +44,26 @@ for env in `echo $UPDATE_ENV`; do
 done
 
 if [[ ( -z "$STY" ) && (( ! -z "$SSH_CONNECTION" ) || ( x"$TERM" == x"xterm-256color" ) || ( x"$TERM" == x"xterm" ) || ( x"$TERM" == x"linux" )) ]]; then
-        if ! tmux has-session -t '=default' >/dev/null 2>&1; then
-		# Create the default session that all our windows will be in...
-		tmux new-session -d -s default -n h "tail -f ~/.tmux-help" \; setw remain-on-exit\; send-keys C-c
-        fi
+	if ! tmux has-session -t '=default' >/dev/null 2>&1; then
+		# Create the default session that all our windows will be in. If it
+		# was killed or renamed while its group lives on, re-create it in
+		# that group, so it has the group's windows again. Quietly: two
+		# logins racing here make one "duplicate session". The member is a
+		# session id ($N); list-sessions' errors (no server yet after boot)
+		# do not match that and are dropped.
+		default_member=
+		for line in ${(f)"$(tmux list-sessions -F '#{session_id}' -f '#{==:#{session_group},default}' 2>&1)"}; do
+			if [[ $line == '$'<-> ]]; then
+				default_member=$line
+				break
+			fi
+		done
+		if [[ -n $default_member ]]; then
+			tmux new-session -d -s default -t "$default_member" >/dev/null 2>&1
+		else
+			tmux new-session -d -s default -n h "tail -f ~/.tmux-help" \; setw remain-on-exit\; send-keys C-c >/dev/null 2>&1
+		fi
+	fi
 	# Reap any unamed sessions which don't have anything attached
 	for session in `tmux list-sessions | grep -v attached | grep '^[0-9]*:' | sed -e's/:.*//'`; do
 		tmux kill-session -t $session;

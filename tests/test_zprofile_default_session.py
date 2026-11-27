@@ -177,11 +177,40 @@ def test_login_recreates_default_when_only_a_login_session_is_left(server):
     assert window_names(server, "default") == ["h"]
 
 
+def test_recreated_default_joins_the_surviving_group(server):
+    """A re-created default is put in the group default, so it has the group's windows."""
+    first = server.run_login_block()
+    assert server.tmux("has-session", "-t", "=default").returncode == 0, first.stderr
+    member = server.tmux("new-session", "-d", "-t", "=default", "-P", "-F", "#{session_name}").stdout.strip()
+    server.tmux("new-window", "-d", "-t", f"={member}:", "-n", "job")
+    server.tmux("rename-session", "-t", "=default", "my-tiles")  # default is gone, its group is not
+
+    result = server.run_login_block()
+
+    group = server.tmux("display-message", "-p", "-t", "=default:", "#{session_group}").stdout.strip()
+    assert group == "default", result.stderr
+    assert sorted(window_names(server, "default")) == ["h", "job"]
+
+
 def test_first_login_prints_no_tmux_error(server):
     """No server runs after boot; the has-session check must not print "error connecting"."""
     result = server.run_login_block()
 
     assert "error connecting" not in result.stdout + result.stderr
+
+
+def test_racing_first_logins_print_nothing(server):
+    """Two logins that both find no default: the second create must not print "duplicate session"."""
+    first = server.run_login_block()
+    assert server.tmux("has-session", "-t", "=default").returncode == 0, first.stderr
+    # The second login checked before the first created default; it creates too.
+    block = login_block().replace("tmux has-session -t '=default'", "false")
+    script = server.tmp_path / "racing.zsh"
+    script.write_text(TMUX_FUNCTION + block)
+
+    result = subprocess.run(["zsh", "-f", str(script)], env=server.env, capture_output=True, text=True, timeout=30)
+
+    assert "duplicate session" not in result.stdout + result.stderr
 
 
 @pytest.mark.parametrize("default_exists", [False, True], ids=["first-login", "later-login"])
