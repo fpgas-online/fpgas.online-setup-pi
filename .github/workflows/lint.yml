@@ -18,8 +18,12 @@ jobs:
       - uses: astral-sh/setup-uv@v5
       - name: Install zsh and tmux
         # The zprofile tests run onpi/tmux/zprofile under zsh against a private tmux server.
-        run: sudo apt-get install -y zsh tmux
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y zsh tmux
       - name: Run tests
+        env:
+          ZPROFILE_TESTS_REQUIRED: "1"
         run: uv run --with pytest pytest tests/ -v
   fleet-mqtt:
     # The fleet scripts against a real broker and each paho-mqtt the Pi roots

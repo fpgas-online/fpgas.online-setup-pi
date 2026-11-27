@@ -34,7 +34,7 @@ DOC = {"schema": 1, "machine": {"serial": "c36b093f773d46b8"},
 
 
 @pytest.fixture
-def broker(tmp_path):
+def broker():
     if not MOSQUITTO:
         if REQUIRED:
             pytest.fail("mosquitto not installed and FLEET_MQTT_REQUIRED=1")
@@ -42,12 +42,18 @@ def broker(tmp_path):
     with socket.socket() as s:
         s.bind(("127.0.0.1", 0))
         port = s.getsockname()[1]
-    conf = tmp_path / "mosquitto.conf"
-    conf.write_text(f"listener {port} 127.0.0.1\nallow_anonymous true\n")
-    proc = subprocess.Popen([MOSQUITTO, "-c", str(conf)])
+    # No config file: Ubuntu 26.04's mosquitto ships an enforced AppArmor
+    # profile that only lets /usr/sbin/mosquitto read config under
+    # /etc/mosquitto, so "-c <tmp file>" fails with "Unable to open config
+    # file" (issue #24). With only -p, mosquitto 2.x runs in local only mode:
+    # it listens on 127.0.0.1 and ::1 and allows anonymous clients.
+    proc = subprocess.Popen([MOSQUITTO, "-p", str(port)])
     try:
         deadline = time.monotonic() + 10
         while True:
+            if proc.poll() is not None:
+                pytest.fail(f"mosquitto exited with {proc.returncode}"
+                            " before it accepted connections")
             try:
                 socket.create_connection(("127.0.0.1", port), timeout=1).close()
                 break
