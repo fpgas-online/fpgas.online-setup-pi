@@ -29,10 +29,10 @@ jobs:
       - uses: actions/checkout@v4
       - uses: astral-sh/setup-uv@v5
       - name: Install mosquitto
-        run: sudo apt-get install -y mosquitto
+        run: sudo apt-get install -y mosquitto mosquitto-clients
       - name: DIAGNOSTIC (issue 24, remove before merge)
         run: |
-          set -x
+          set -x +e
           sudo apt-get install -y strace || true
           cat /etc/os-release || true
           mosquitto -h | head -3 || true
@@ -58,7 +58,10 @@ jobs:
           timeout 3 mosquitto -v -c /tmp/../tmp/$(basename "$T")/m.conf; echo "rc tmp-dotdot=$?"
           cp "$D/m.conf" "$GITHUB_WORKSPACE/m.conf"
           timeout 3 mosquitto -v -c "$GITHUB_WORKSPACE/m.conf"; echo "rc workspace=$?"
+          cp /usr/sbin/mosquitto "$T/mosq-copy"; timeout 3 "$T/mosq-copy" -v -c "$T/m.conf"; echo "rc unconfined-copy=$?"
           timeout 3 mosquitto -v -p 18832; echo "rc port-only=$?"
+          (timeout 4 mosquitto -v -p 18833 & sleep 1; ss -ltnp; mosquitto_pub -h 127.0.0.1 -p 18833 -t t -m m; echo "pub rc=$?"; wait)
+          sudo cat /var/log/syslog | grep -i -E "apparmor.*mosquitto" || true
           timeout 3 strace -f -e trace=openat,open,stat,newfstatat,statx mosquitto -v -c "$T/m.conf" || echo "strace rc=$?"
           sudo dmesg | grep -i -E 'apparmor|mosquitto' || true
           sudo journalctl -k --no-pager | grep -i -E 'apparmor|mosquitto' || true
